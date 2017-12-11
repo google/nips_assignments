@@ -15,6 +15,8 @@ reviewers from the same organization for a given paper).
 In order to use this code, you first need to install the Google operations
 research toolbox, details here:
 https://developers.google.com/optimization/introduction/installing
+Once this is done, modify OR_DIR in Makefile to point
+to the underlying or-tools directory, then run "make".
 
 Furthermore, it is recommended to install additional third-party solvers
 such as SCIP and GUROBI to obtain a faster result, in particular for the
