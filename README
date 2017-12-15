@@ -1,3 +1,4 @@
+# NIPS Assignments
 
 This directory contains code that was used by the NIPS 2017 program chairs,
 mosty to help them assign papers to reviewers and area chairs, as well as
@@ -5,6 +6,7 @@ assign area chairs to senior area chairs.
 NIPS is the main machine learning conference (www.nips.cc).
 The program chairs for 2017 were Samy Bengio, Hanna Wallach, Rob Fergus and
 S.V.N. Vishwanathan.
+
 NIPS usually use CMT (cmt.research.microsoft.com) to handle the reviewing
 process, and the program chairs could have use it as well for the assignment
 tasks, but they felt the need to control more precisely the assignments,
@@ -27,4 +29,5 @@ installation page.
 Note that this is not an official Google product.
 
 Samy Bengio
+
 Google Brain
