@@ -21,7 +21,7 @@ limitations under the License.
 // constraint, as follows, where <t> means a tab:
 // ac_name <t> paper(s) <t> num_papers <t> conflict <t> bid_not_willing <t>
 // bid_not_entered <t> bid_in_a_pinch <t> bid_willing <t> bid_eager <t>
-// tpms <t> cosine <t> containment
+// quota <t> tpms <t> cosine <t> containment
 // where ac_name is a string related to the area chair
 //       paper(s) is a string identifying a set of papers (often one, but
 //                sometimes papers need to be assigned to the same AC...)
@@ -29,6 +29,8 @@ limitations under the License.
 //       conflict is 1 if there is a conflict between AC and paper, 0 otherwise
 //       bid_XXX is the number of papers in the set for which the AC has bid
 //               XXX (eager, not willing, etc).
+//       quota is the maximum number of papers to be assigned to that AC
+//             when requested, -1 otherwise,
 //       tpms is a float giving the similarity between the paper and the AC
 //            as estimated by the Toronto Paper Matching System
 //       cosine is the cosine similarity between paper and AC according to
@@ -79,6 +81,7 @@ namespace operations_research {
 void RunIntegerProgrammingSolver(
     MPSolver::OptimizationProblemType optimization_problem_type,
     std::vector<std::vector<float> >* cost,
+    std::vector<int32>* ac_quota,
     std::vector<std::vector<float> >* tpms,
     std::vector<std::vector<int32> >* bids_eager,
     std::vector<std::vector<int32> >* bids_willing,
@@ -116,8 +119,12 @@ void RunIntegerProgrammingSolver(
   std::vector<MPConstraint*> c0;
   c0.resize(num_acs);
   for (int i = 0; i < num_acs; ++i) {
-    c0[i] = solver.MakeRowConstraint(FLAGS_mip_min_papers,
-        FLAGS_mip_max_papers);
+    int max_papers = (*ac_quota)[i];
+    int min_papers = FLAGS_mip_min_papers;
+    if (min_papers > max_papers) {
+      min_papers = max_papers;
+    }
+    c0[i] = solver.MakeRowConstraint(min_papers, max_papers);
     for (int j = 0; j < num_papers; ++j) {
       c0[i]->SetCoefficient(assignment[i][j], (*weight)[j]);
     }
@@ -267,11 +274,16 @@ int main(int argc, char** argv) {
   for (int j = 0; j < FLAGS_max_num_papers; ++j) {
     weight[j] = 0.0;
   }
+  std::vector<int32> ac_quota;
+  ac_quota.resize(FLAGS_max_num_acs);
+  for (int i = 0; i < FLAGS_max_num_acs; ++i) {
+    ac_quota[i] = FLAGS_mip_max_papers;
+  }
   // Not reading the first line as it contains the header.
   for (int i = 1; i < lines.size(); ++i) {
     std::vector<std::string> fields =
         strings::Split(lines[i], "\t", strings::SkipEmpty());
-    CHECK_EQ(fields.size(), 12) << "line not correct " << lines[i];
+    CHECK_EQ(fields.size(), 13) << "line not correct " << lines[i];
     if (!operations_research::FindOrNull(ac, fields[0])) {
       ac[fields[0]] = num_acs;
       idx_to_ac[num_acs] = fields[0];
@@ -299,13 +311,15 @@ int main(int argc, char** argv) {
     CHECK(operations_research::safe_strtof(fields[7], &bid_willing));
     float bid_eager;
     CHECK(operations_research::safe_strtof(fields[8], &bid_eager));
+    int64 quota;  // ac quota
+    CHECK(operations_research::safe_strto64(fields[9], &quota));
     float one_tpms;  // tpms score; high is good
-    CHECK(operations_research::safe_strtof(fields[9], &one_tpms))
+    CHECK(operations_research::safe_strtof(fields[10], &one_tpms))
         << "tpms not correct " << lines[i];
     float subject_cosine;  // cosine similarity of topics, high is good
-    CHECK(operations_research::safe_strtof(fields[10], &subject_cosine));
+    CHECK(operations_research::safe_strtof(fields[11], &subject_cosine));
     float subject_containment;  // containment similarity of topics
-    CHECK(operations_research::safe_strtof(fields[11], &subject_containment));
+    CHECK(operations_research::safe_strtof(fields[12], &subject_containment));
 
     int32 idx_ac = ac[fields[0]];
     int32 idx_paper = paper[fields[1]];
@@ -320,6 +334,9 @@ int main(int argc, char** argv) {
     score += FLAGS_not_entered_bid_multiplier * bid_not_entered;
     if (score < 0) {
       LOG(INFO) << "score is negative: " << score << " line: " << lines[i];
+    }
+    if (quota > 0) {  // if -1 I assume no particular quota
+      ac_quota[idx_ac] = quota;
     }
     cost[idx_ac][idx_paper] = score;
     tpms[idx_ac][idx_paper] = one_tpms;
@@ -341,7 +358,7 @@ int main(int argc, char** argv) {
   operations_research::RunIntegerProgrammingSolver(
       // operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING,
       operations_research::MPSolver::CBC_MIXED_INTEGER_PROGRAMMING,
-      &cost, &tpms, &bids_eager, &bids_willing, &bids_in_a_pinch,
+      &cost, &ac_quota, &tpms, &bids_eager, &bids_willing, &bids_in_a_pinch,
       &bids_not_entered, &bids_not_willing, &cosine, &containment, &weight,
       &idx_to_ac, &idx_to_paper, num_acs, num_papers);
   return 0;
