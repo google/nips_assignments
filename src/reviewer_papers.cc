@@ -110,7 +110,8 @@ void RunIntegerProgrammingSolver(
     std::vector<std::vector<float> >* area_chair_ranks,
     std::vector<int32>* reviewer_quota,
     std::vector<int32>* reviewer_org,
-    std::vector<int32>* reviewers_per_org) {
+    std::vector<int32>* reviewers_per_org,
+    std::vector<float>* weight) {
   MPSolver solver("IntegerProgrammingSolver", optimization_problem_type);
   if (FLAGS_enable_output) {
     solver.EnableOutput();
@@ -146,7 +147,7 @@ void RunIntegerProgrammingSolver(
     }
     c0[i] = solver.MakeRowConstraint(min_papers, max_papers);
     for (int j = 0; j < num_papers; ++j) {
-      c0[i]->SetCoefficient(assignment[i][j], 1.0);
+      c0[i]->SetCoefficient(assignment[i][j], (*weight)[j]);
     }
   }
 
@@ -249,7 +250,7 @@ void RunIntegerProgrammingSolver(
     float num_positive = 0;
     for (int j = 0; j < num_papers; ++j) {
       if (assignment[i][j]->solution_value() > 0) {
-        num += 1.0;
+        num += (*weight)[j];
         if ((*bids_not_willing)[i][j] + (*bids_not_entered)[i][j] == 0) {
           num_positive += 1;
           total_happiness += 1;
@@ -330,6 +331,8 @@ int main(int argc, char** argv) {
   cosine.resize(FLAGS_max_num_reviewers);
   std::vector<std::vector<float> > containment;
   containment.resize(FLAGS_max_num_reviewers);
+  std::vector<float> weight;
+  weight.resize(FLAGS_max_num_papers);
   for (int i = 0; i < FLAGS_max_num_reviewers; ++i) {
     cost[i].resize(FLAGS_max_num_papers);
     area_chair_ranks[i].resize(FLAGS_max_num_papers);
@@ -353,6 +356,9 @@ int main(int argc, char** argv) {
       cosine[i][j] = 0;
       containment[i][j] = 0;
     }
+  }
+  for (int j = 0; j < FLAGS_max_num_papers; ++j) {
+    weight[j] = 0.0;
   }
   std::vector<int32> reviewer_quota;
   std::vector<int32> reviewer_org;
@@ -382,7 +388,10 @@ int main(int argc, char** argv) {
     int32 idx_reviewer = reviewer[fields[0]];
     int32 idx_paper = paper[fields[1]];
 
+    // now trying to use fields[2]...
     // fields[2] is paper_group_size and always equal to 1
+    float w;
+    CHECK(operations_research::safe_strtof(fields[2], &w));
 
     int64 conflict;  // 1 = conflict, 0 otherwise
     CHECK(operations_research::safe_strto64(fields[3], &conflict));
@@ -425,11 +434,11 @@ int main(int argc, char** argv) {
       0.1 * bid_not_entered + bid_not_willing;
     float rank = area_chair_rank > 0 ? 1.0 / area_chair_rank : 1.0 / 1000.0;
     float score = conflict * FLAGS_conflict_multiplier +
-        (1 - rank) * FLAGS_area_chair_rank_multiplier +
-        (1 - tpms) * FLAGS_tpms_multiplier +
-        (1 - bid) * FLAGS_bid_multiplier +
-        (1 - subject_cosine) * FLAGS_subject_cosine_multiplier +
-        (1 - subject_containment) * FLAGS_subject_containment_multiplier;
+        w * (1 - rank) * FLAGS_area_chair_rank_multiplier +
+        w * (1 - tpms) * FLAGS_tpms_multiplier +
+        w * (1 - bid) * FLAGS_bid_multiplier +
+        w * (1 - subject_cosine) * FLAGS_subject_cosine_multiplier +
+        w * (1 - subject_containment) * FLAGS_subject_containment_multiplier;
     score += FLAGS_negative_bid_multiplier * bid_not_willing;
     score += FLAGS_not_entered_bid_multiplier * bid_not_entered;
     if (area_chair_rank > 100.0) {
@@ -448,6 +457,7 @@ int main(int argc, char** argv) {
     bids_not_willing[idx_reviewer][idx_paper] = bid_not_willing;
     cosine[idx_reviewer][idx_paper] = subject_cosine;
     containment[idx_reviewer][idx_paper] = subject_containment;
+    weight[idx_paper] = w;
   }
 
   std::vector<int32> reviewers_per_org;
@@ -478,6 +488,6 @@ int main(int argc, char** argv) {
       &bids_not_entered, &bids_not_willing, &cosine, &containment,
       &idx_to_reviewer, &idx_to_paper, num_reviewers, num_papers,
       num_orgs, &area_chair_ranks, &reviewer_quota, &reviewer_org,
-      &reviewers_per_org);
+      &reviewers_per_org, &weight);
   return 0;
 }
